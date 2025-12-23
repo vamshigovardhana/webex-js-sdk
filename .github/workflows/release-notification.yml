@@ -1,0 +1,199 @@
+name: Release Notifier Bot
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  notify-contributors:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      pull-requests: write
+      issues: write
+    
+    steps:
+      - name: Get release information
+        id: release
+        run: |
+          VERSION="${{ github.event.release.tag_name }}"
+          RELEASE_URL="${{ github.event.release.html_url }}"
+          CHANGELOG_URL="https://github.com/webex/webex-js-sdk/wiki/Changelog#${VERSION}"
+          
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "release_url=${RELEASE_URL}" >> $GITHUB_OUTPUT
+          echo "changelog_url=${CHANGELOG_URL}" >> $GITHUB_OUTPUT
+          
+          echo "📦 Release: ${VERSION}"
+          echo "🔗 URL: ${RELEASE_URL}"
+          echo "📝 Changelog: ${CHANGELOG_URL}"
+      
+      - name: Find PRs in this release
+        id: find_prs
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            // Get the previous release to compare
+            const releases = await github.rest.repos.listReleases({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 2
+            });
+            
+            let prNumbers = [];
+            
+            if (releases.data.length >= 2) {
+              const currentRelease = releases.data[0];
+              const previousRelease = releases.data[1];
+              
+              console.log(`Comparing ${previousRelease.tag_name}...${currentRelease.tag_name}`);
+              
+              // Get commits between releases
+              const comparison = await github.rest.repos.compareCommits({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                base: previousRelease.tag_name,
+                head: currentRelease.tag_name
+              });
+              
+              console.log(`Found ${comparison.data.commits.length} commits`);
+              
+              // Extract PR numbers from commit messages
+              const prSet = new Set();
+              comparison.data.commits.forEach(commit => {
+                // Match PR numbers like #123, #456
+                const matches = commit.commit.message.match(/#(\d+)/g);
+                if (matches) {
+                  matches.forEach(match => {
+                    const prNum = match.replace('#', '');
+                    prSet.add(prNum);
+                  });
+                }
+              });
+              
+              prNumbers = Array.from(prSet);
+              console.log(`Found ${prNumbers.length} PRs: ${prNumbers.join(', ')}`);
+            } else {
+              console.log('This is the first release or only one release exists');
+            }
+            
+            return prNumbers;
+      
+      - name: Comment on PRs
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const prNumbers = ${{ steps.find_prs.outputs.result }};
+            const version = "${{ steps.release.outputs.version }}";
+            const releaseUrl = "${{ steps.release.outputs.release_url }}";
+            const changelogUrl = "${{ steps.release.outputs.changelog_url }}";
+            
+            if (!prNumbers || prNumbers.length === 0) {
+              console.log('No PRs found in this release');
+              return;
+            }
+            
+            console.log(`Commenting on ${prNumbers.length} PRs...`);
+            
+            for (const prNumber of prNumbers) {
+              try {
+                // Check if we already commented on this PR for this version
+                const comments = await github.rest.issues.listComments({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: parseInt(prNumber)
+                });
+                
+                const botAlreadyCommented = comments.data.some(comment => 
+                  comment.user.type === 'Bot' && 
+                  comment.body.includes(version)
+                );
+                
+                if (botAlreadyCommented) {
+                  console.log(`PR #${prNumber}: Already commented for ${version}, skipping`);
+                  continue;
+                }
+                
+                // Add comment with release information
+                const commentBody = `🎉 **This PR has been released!**
+
+📦 **Version:** ${version}
+📝 **Changelog:** ${changelogUrl}
+🔖 **Release:** ${releaseUrl}
+
+Thank you for your contribution! 🙌
+
+---
+*This is an automated message from the Release Notifier Bot*`;
+                
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: parseInt(prNumber),
+                  body: commentBody
+                });
+                
+                console.log(`PR #${prNumber}: ✅ Comment added`);
+                
+                // Small delay to avoid rate limiting
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+              } catch (error) {
+                console.error(`PR #${prNumber}: ❌ Error - ${error.message}`);
+              }
+            }
+            
+            console.log('✅ Finished commenting on PRs');
+      
+      - name: Send Webex notification
+        if: success()
+        env:
+          WEBEX_BOT_TOKEN: ${{ secrets.WEBEX_BOT_TOKEN }}
+          WEBEX_ROOM_ID: ${{ secrets.WEBEX_ROOM_ID }}
+        run: |
+          VERSION="${{ steps.release.outputs.version }}"
+          RELEASE_URL="${{ steps.release.outputs.release_url }}"
+          CHANGELOG_URL="${{ steps.release.outputs.changelog_url }}"
+          
+          # Build Webex message in markdown format
+          MESSAGE="🎉 **New webex-js-sdk Release Published!**
+
+**Version:** ${VERSION}
+**Changelog:** [View Changelog](${CHANGELOG_URL})
+**Release Notes:** [View Release](${RELEASE_URL})
+
+Check it out and update your dependencies!"
+          
+          # Send message to Webex (only if secrets are configured)
+          if [ -n "${WEBEX_BOT_TOKEN}" ] && [ -n "${WEBEX_ROOM_ID}" ]; then
+            RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+              "https://webexapis.com/v1/messages" \
+              -H "Authorization: Bearer ${WEBEX_BOT_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"roomId\": \"${WEBEX_ROOM_ID}\",
+                \"markdown\": $(echo "$MESSAGE" | jq -Rs .)
+              }")
+            
+            HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+            
+            if [ "$HTTP_CODE" -eq 200 ]; then
+              echo "✅ Webex notification sent successfully"
+            else
+              echo "⚠️  Webex notification failed (HTTP $HTTP_CODE)"
+              echo "This is non-critical - PR comments were still posted"
+            fi
+          else
+            echo "ℹ️  Webex secrets not configured - skipping Webex notification"
+            echo "To enable: Add WEBEX_BOT_TOKEN and WEBEX_ROOM_ID to repository secrets"
+          fi
+      
+      - name: Summary
+        if: always()
+        run: |
+          echo "✅ Release notification workflow completed"
+          echo "📦 Version: ${{ steps.release.outputs.version }}"
+          echo "See logs above for details"
+
