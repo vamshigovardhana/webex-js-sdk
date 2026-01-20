@@ -90,20 +90,6 @@ jobs:
               return { prs: [prNumber], packages: packages };
             }
             
-            if (context.eventName === 'pull_request' && context.payload.pull_request) {
-              const prNumber = context.payload.pull_request.number;
-              console.log(`✅ Using PR #${prNumber} from pull_request event`);
-              const { packages, packageVersions, primaryPackage, primaryPackageVersion } =
-                await getPackagesForPr(prNumber);
-              core.setOutput('pr_numbers', JSON.stringify([prNumber]));
-              core.setOutput('packages', JSON.stringify(packages));
-              core.setOutput('package_versions', JSON.stringify(packageVersions));
-              core.setOutput('primary_package', primaryPackage);
-              core.setOutput('primary_package_version', primaryPackageVersion);
-              core.setOutput('commit_count', '1');
-              return { prs: [prNumber], packages: packages };
-            }
-
             console.log(`Looking for PR in the most recent merge commit`);
             
             // Get the HEAD commit (the merge commit that triggered this deployment)
