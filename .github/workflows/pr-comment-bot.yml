@@ -8,10 +8,8 @@ on:
         description: 'Test version number (e.g., 3.3.1)'
         required: false
         default: '3.3.1'
-  workflow_run:
-    workflows: ["Deploy CD"]
-    types:
-      - completed
+  pull_request:
+    types: [closed]
     branches:
       - next
 
@@ -19,8 +17,8 @@ jobs:
   comment-on-prs:
     name: Comment on Merged PRs
     runs-on: ubuntu-latest
-    # Only run if the deploy workflow completed successfully OR if manually triggered
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    # Only run if manually triggered or PR was merged
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true }}
     
     steps:
       - name: Checkout Project
