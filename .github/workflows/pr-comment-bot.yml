@@ -72,7 +72,6 @@ jobs:
             const version = '${{ steps.version-info.outputs.version }}';
             const versionNumber = '${{ steps.version-info.outputs.version_number }}';
             const stableVersion = versionNumber.replace(/-next\..*$/, '');
-            const stableVersion = versionNumber.replace(/-next\..*$/, '');
             
             // For manual testing, allow override with specific PR number
             const testPrNumber = '${{ github.event.inputs.test_pr_number }}';
