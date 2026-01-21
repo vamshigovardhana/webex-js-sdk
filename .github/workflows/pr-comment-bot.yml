@@ -12,10 +12,8 @@ on:
         description: 'Test PR number (e.g., 2) - leave empty to auto-detect'
         required: false
         default: ''
-  workflow_run:
-    workflows: ["Deploy CD"]
-    types:
-      - completed
+  pull_request:
+    types: [closed]
     branches:
       - next
 
@@ -23,8 +21,8 @@ jobs:
   comment-on-prs:
     name: Comment on Released PRs
     runs-on: ubuntu-latest
-    # Only run if the deploy workflow completed successfully OR if manually triggered
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    # Only run if manually triggered or PR was merged
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true }}
     
     steps:
       - name: Checkout Repository
@@ -90,6 +88,20 @@ jobs:
               return { prs: [prNumber], packages: packages };
             }
             
+            if (context.eventName === 'pull_request' && context.payload.pull_request) {
+              const prNumber = context.payload.pull_request.number;
+              console.log(`✅ Using PR #${prNumber} from pull_request event`);
+              const { packages, packageVersions, primaryPackage, primaryPackageVersion } =
+                await getPackagesForPr(prNumber);
+              core.setOutput('pr_numbers', JSON.stringify([prNumber]));
+              core.setOutput('packages', JSON.stringify(packages));
+              core.setOutput('package_versions', JSON.stringify(packageVersions));
+              core.setOutput('primary_package', primaryPackage);
+              core.setOutput('primary_package_version', primaryPackageVersion);
+              core.setOutput('commit_count', '1');
+              return { prs: [prNumber], packages: packages };
+            }
+
             console.log(`Looking for PR in the most recent merge commit`);
             
             // Get the HEAD commit (the merge commit that triggered this deployment)
