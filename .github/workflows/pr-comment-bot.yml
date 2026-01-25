@@ -102,7 +102,7 @@ jobs:
               core.setOutput('commit_count', '1');
               return { prs: [prNumber], packages: packages };
             }
-
+            
             console.log(`Looking for PR in the most recent merge commit`);
             
             // Get the HEAD commit (the merge commit that triggered this deployment)
@@ -229,15 +229,10 @@ jobs:
               return;
             }
             
-            // Build the changelog URL with the primary package and version when available
+            // Build the changelog URL filtered by PR number (auto-selects commits)
             const changelogUrl = new URL('https://web-sdk.webex.com/changelog/');
             changelogUrl.searchParams.set('stable_version', stableVersion);
-            if (primaryPackage) {
-              changelogUrl.searchParams.set('package', primaryPackage);
-            }
-            if (primaryPackageVersion) {
-              changelogUrl.searchParams.set('version', primaryPackageVersion);
-            }
+            changelogUrl.searchParams.set('prNumber', prNumbers[0]);
             
             // Build the package list markdown
             const packageList = packages.slice(0, 5).map(p => `\`${p}\``).join(', ');
@@ -314,7 +309,7 @@ jobs:
             }
             
             console.log('✨ Comment posted successfully!');
-
+      
       - name: Release Summary
         run: |
           echo "### 📊 Bot Summary" >> $GITHUB_STEP_SUMMARY
