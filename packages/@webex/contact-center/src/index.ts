@@ -236,3 +236,4 @@ registerPlugin('cc', ContactCenter, {
 /** The Contact Center plugin default export */
 export default ContactCenter;
 // Test bot comment - Sun Jan 25 18:37:15 IST 2026
+// Test package auto-select - Sun Jan 25 18:49:42 IST 2026
