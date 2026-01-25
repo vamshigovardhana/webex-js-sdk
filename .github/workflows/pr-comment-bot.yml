@@ -234,6 +234,9 @@ jobs:
             const changelogUrl = new URL('https://web-sdk.webex.com/changelog/');
             changelogUrl.searchParams.set('stable_version', stableVersion);
             changelogUrl.searchParams.set('prNumber', prNumbers[0]);
+            if (primaryPackage) {
+              changelogUrl.searchParams.set('package', primaryPackage);
+            }
             
             // Build the package list markdown
             const packageList = packages.slice(0, 5).map(p => `\`${p}\``).join(', ');
