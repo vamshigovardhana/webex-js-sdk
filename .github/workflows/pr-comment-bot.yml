@@ -213,6 +213,7 @@ jobs:
           script: |
             const version = '${{ steps.version-info.outputs.version }}';
             const versionNumber = '${{ steps.version-info.outputs.version_number }}';
+            const stableVersion = versionNumber.replace(/-next\..*$/, '');
             const prNumbersRaw = '${{ steps.get-prs.outputs.pr_numbers }}';
             const packagesRaw = '${{ steps.get-prs.outputs.packages }}';
             const packageVersionsRaw = '${{ steps.get-prs.outputs.package_versions }}';
