@@ -10,12 +10,14 @@ on:
       test_pr_number:
         description: 'Test PR number - leave empty to auto-detect'
         required: false
-  workflow_run:
-    workflows: ["Deploy CD"]
-    types:
-      - completed
-    branches:
-      - next
+        default: ''
+  # Disabled until we fix the versioning issue
+  # workflow_run:
+  #   workflows: ["Deploy CD"]
+  #   types:
+  #     - completed
+  #   branches:
+  #     - next
 
 jobs:
   comment-on-prs:
