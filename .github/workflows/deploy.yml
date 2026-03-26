@@ -4,30 +4,7 @@ run-name: ${{ github.actor }} is running Deploy CD
 on:
   push:
     branches: # White-list of deployable tags and branches. Note that all white-listed branches cannot include any `/` characters
-<<<<<<< Updated upstream
-      - next
-  workflow_dispatch:
-    inputs:
-      dry_run:
-        description: 'Skip NPM publish, tagging, and docs (for testing the workflow)'
-        type: boolean
-        default: true
-      pr_number:
-        description: 'PR number to comment on (for testing the comment logic)'
-        type: string
-        default: ''
-      test_version:
-        description: 'Version for comment (e.g., v3.5.0-next.1)'
-        type: string
-        default: ''
-      test_packages:
-        description: 'Packages for comment (e.g., {webex,@webex/plugin-meetings})'
-        type: string
-        default: ''
-
-=======
       - bot-comment
->>>>>>> Stashed changes
 
 env:
   rid: ${{ github.run_id }}-${{ github.run_number }}
@@ -146,42 +123,22 @@ jobs:
         # Used for running node scripts against all changed packages since the last push to the target branch.
       - id: generate-package-matrix-node-changed
         name: Generate Package Matrix
-        run: |
-          SINCE="${{ github.event.before }}"
-          if [ -z "$SINCE" ] || [ "$SINCE" = "0000000000000000000000000000000000000000" ]; then
-            SINCE=$(git rev-parse HEAD~1)
-          fi
-          echo "node-changed=$(yarn package-tools list --mode node --since $SINCE)" >> $GITHUB_OUTPUT
+        run: echo "node-changed=$(yarn package-tools list --mode node --since ${{ github.event.before }})" >> $GITHUB_OUTPUT
 
         # Used for running node scripts against all changed packages, and their dependents, since the last push to the target branch.
       - id: generate-package-matrix-node-recursive
         name: Generate Package Matrix
-        run: |
-          SINCE="${{ github.event.before }}"
-          if [ -z "$SINCE" ] || [ "$SINCE" = "0000000000000000000000000000000000000000" ]; then
-            SINCE=$(git rev-parse HEAD~1)
-          fi
-          echo "node-recursive=$(yarn package-tools list --mode node --recursive --since $SINCE)" >> $GITHUB_OUTPUT
+        run: echo "node-recursive=$(yarn package-tools list --mode node --recursive --since ${{ github.event.before }})" >> $GITHUB_OUTPUT
 
         # Used for running yarn tools against all changed packages since the last push to the target branch.
       - id: generate-package-matrix-yarn-changed
         name: Generate Package Matrix
-        run: |
-          SINCE="${{ github.event.before }}"
-          if [ -z "$SINCE" ] || [ "$SINCE" = "0000000000000000000000000000000000000000" ]; then
-            SINCE=$(git rev-parse HEAD~1)
-          fi
-          echo "yarn-changed=$(yarn package-tools list --since $SINCE)" >> $GITHUB_OUTPUT
+        run: echo "yarn-changed=$(yarn package-tools list --since ${{ github.event.before }})" >> $GITHUB_OUTPUT
 
         # Used for running yarn tools against all changed packages, and their dependents, since the last push to the target branch.
       - id: generate-package-matrix-yarn-recursive
         name: Generate Package Matrix
-        run: |
-          SINCE="${{ github.event.before }}"
-          if [ -z "$SINCE" ] || [ "$SINCE" = "0000000000000000000000000000000000000000" ]; then
-            SINCE=$(git rev-parse HEAD~1)
-          fi
-          echo "yarn-recursive=$(yarn package-tools list --recursive --since $SINCE)" >> $GITHUB_OUTPUT
+        run: echo "yarn-recursive=$(yarn package-tools list --recursive --since ${{ github.event.before }})" >> $GITHUB_OUTPUT
 
       - name: Display Package Matrix
         run: |
@@ -195,7 +152,6 @@ jobs:
     name: Publish - NPM
     needs: generate-package-matrix
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'push' || inputs.dry_run != true }}
 
     steps:
       - name: Checkout Project
@@ -253,7 +209,7 @@ jobs:
     name: Publish - Documentation
     needs: [publish-npm,generate-package-matrix]
     runs-on: ubuntu-latest
-    if: ${{ github.ref != 'refs/heads/wxcc' && (github.event_name == 'push' || inputs.dry_run != true) }}
+    if: github.ref != 'refs/heads/wxcc'
 
     steps:
       - name: Documentation Deploy Steps
@@ -323,15 +279,12 @@ jobs:
     name: Publish - Tags
     runs-on: ubuntu-latest
     needs: [generate-package-matrix, publish-npm]
-    if: ${{ github.event_name == 'push' || inputs.dry_run != true }}
 
     outputs:
       message: ${{ steps.versionextractor.outputs.message }}
       version: ${{ steps.versionextractor.outputs.version }}
       commit: ${{ steps.lastcommit.outputs.commit }}
       proceed: ${{ steps.skipcondition.outputs.proceed }}
-      package_name: ${{ steps.changedpackage.outputs.package_name }}
-      package_version: ${{ steps.changedpackage.outputs.package_version }}
 
     steps:
       - name: Checkout Project
@@ -366,27 +319,7 @@ jobs:
           echo "message=test deploy notification" >> $GITHUB_OUTPUT
           echo "version=v3.4.0-next.1" >> $GITHUB_OUTPUT
 
-<<<<<<< Updated upstream
-      - name: Extract changed package version
-        id: changedpackage
-        run: |
-          PACKAGES="${{ needs.generate-package-matrix.outputs.node-recursive }}"
-          CLEAN=$(echo "$PACKAGES" | tr -d '{}')
-          if echo "$CLEAN" | tr ',' '\n' | grep -q "^webex$"; then
-            PKG="webex"
-          else
-            PKG=$(echo "$CLEAN" | tr ',' '\n' | head -1 | tr -d ' ')
-          fi
-          if [ -n "$PKG" ]; then
-            PKG_VERSION=$(yarn package-tools sync --tag ${GITHUB_REF##*/} --packages $PKG | awk '{print $3}' | tr -d '%')
-            echo "package_name=${PKG}" >> $GITHUB_OUTPUT
-            echo "package_version=v${PKG_VERSION}" >> $GITHUB_OUTPUT
-            echo "📦 Selected package: ${PKG} version: ${PKG_VERSION}"
-          fi
-
-=======
       # TEMPORARY: Forced to true for fork testing
->>>>>>> Stashed changes
       - name: Conditions to skip tag publish
         id: skipcondition
         run: |
@@ -460,147 +393,6 @@ jobs:
             fi
           fi
 
-<<<<<<< Updated upstream
-  comment-on-prs:
-    name: Comment on Merged PR
-    needs: [publish-tag, generate-package-matrix]
-    runs-on: ubuntu-latest
-    if: |
-      always() &&
-      needs.generate-package-matrix.result == 'success' &&
-      (needs.generate-package-matrix.outputs.node-recursive != '' || inputs.pr_number != '')
-
-    steps:
-      - name: Checkout Project
-        uses: actions/checkout@v3
-
-      - name: Get Pull Request Number
-        id: pr
-        run: |
-          if [ -n "${{ inputs.pr_number }}" ]; then
-            echo "pull_request_number=${{ inputs.pr_number }}" >> $GITHUB_OUTPUT
-          else
-            echo "pull_request_number=$(gh pr view --json number -q .number || echo "")" >> $GITHUB_OUTPUT
-          fi
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Auto-detect Version from Tags
-        id: tag-version
-        run: |
-          git fetch --tags origin next
-          VERSION=$(git describe --tags --abbrev=0 origin/next 2>/dev/null || echo "")
-          echo "📋 Auto-detected version from tags: ${VERSION}"
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
-
-      - name: Auto-detect Packages from PR
-        id: pr-packages
-        if: ${{ steps.pr.outputs.pull_request_number != '' }}
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const prNumber = parseInt('${{ steps.pr.outputs.pull_request_number }}');
-            console.log(`📋 Detecting packages from PR #${prNumber} files...`);
-
-            const files = await github.paginate(github.rest.pulls.listFiles, {
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: prNumber,
-              per_page: 100
-            });
-
-            const packages = new Set();
-            for (const file of files) {
-              if (!file.filename.startsWith('packages/')) continue;
-              const parts = file.filename.split('/');
-              if (parts[1] === '@webex' && parts.length >= 3) {
-                packages.add(`@webex/${parts[2]}`);
-              } else if (parts.length >= 2) {
-                packages.add(parts[1]);
-              }
-            }
-            if (packages.size === 0) packages.add('webex');
-
-            const pkgList = Array.from(packages);
-            const primary = pkgList.includes('webex') ? 'webex' : pkgList[0];
-            console.log(`📋 Auto-detected packages: ${pkgList.join(', ')}`);
-            console.log(`📋 Primary package: ${primary}`);
-            core.setOutput('packages', `{${pkgList.join(',')}}`);
-            core.setOutput('primary_package', primary);
-
-      - name: Post Comment on PR
-        if: ${{ steps.pr.outputs.pull_request_number != '' }}
-        uses: actions/github-script@v7
-        env:
-          INPUT_VERSION: ${{ needs.publish-tag.outputs.package_version || steps.tag-version.outputs.version || 'v0.0.0-dry-run' }}
-          INPUT_PACKAGES: ${{ needs.generate-package-matrix.outputs.node-recursive || steps.pr-packages.outputs.packages || 'webex' }}
-          INPUT_PR_NUMBER: ${{ steps.pr.outputs.pull_request_number }}
-          INPUT_PACKAGE_NAME: ${{ needs.publish-tag.outputs.package_name || steps.pr-packages.outputs.primary_package || 'webex' }}
-        with:
-          script: |
-            const version = process.env.INPUT_VERSION || '';
-            const versionNumber = version.replace(/^v/, '');
-            const prNumber = parseInt(process.env.INPUT_PR_NUMBER);
-
-            if (!prNumber) {
-              console.log('No PR number found, skipping');
-              return;
-            }
-
-            console.log(`Posting comment on PR #${prNumber} for version ${version}`);
-
-            const existingComments = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: prNumber
-            });
-
-            const alreadyCommented = existingComments.data.some(c =>
-              c.user.type === 'Bot' &&
-              c.body.includes('Your changes are now available') &&
-              c.body.includes(version)
-            );
-
-            if (alreadyCommented) {
-              console.log(`Already commented on PR #${prNumber} for ${version}`);
-              return;
-            }
-
-            const packagesRaw = process.env.INPUT_PACKAGES || '';
-            const packages = packagesRaw
-              .replace(/[{}]/g, '')
-              .split(',')
-              .map(p => p.trim())
-              .filter(Boolean);
-
-            const primaryPackage = process.env.INPUT_PACKAGE_NAME || 'webex';
-            const packageList = packages.slice(0, 5).map(p => `\`${p}\``).join(', ');
-            const morePackages = packages.length > 5 ? ` and ${packages.length - 5} more` : '';
-
-            const stableVersion = versionNumber.replace(/-next\..*$/, '');
-            const changelogUrl = `https://web-sdk.webex.com/changelog/?stable_version=${stableVersion}&package=${primaryPackage}&version=${versionNumber}`;
-
-            const commentBody = [
-              '## 🎉 Your changes are now available!',
-              '',
-              `**Released in:** [\`${version}\`](https://github.com/${context.repo.owner}/${context.repo.repo}/releases/tag/${version})`,
-              `**Packages updated:** ${packageList}${morePackages}`,
-              '',
-              `📖 **[View full changelog →](${changelogUrl})**`,
-              '',
-              '---',
-              `<sub>🤖 This is an automated message.</sub>`
-            ].join('\n');
-
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: prNumber,
-              body: commentBody
-            });
-
-            console.log(`✅ Commented on PR #${prNumber}`);
-=======
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "stable_version=${STABLE_VERSION}" >> $GITHUB_OUTPUT
           echo "deploy_sha=${DEPLOY_SHA}" >> $GITHUB_OUTPUT
@@ -744,4 +536,3 @@ jobs:
             https://webexapis.com/v1/messages > /dev/null
 
           echo "✅ Message sent successfully!"
->>>>>>> Stashed changes
