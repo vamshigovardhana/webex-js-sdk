@@ -176,10 +176,9 @@ jobs:
           path: '**/dist'
           key: dist-${{ env.rid }}
 
-      # TEMPORARY: Commented out for fork testing (no NPM_TOKEN)
-      # - name: Add NPM token to .yarnrc.yml file
-      #   run: |
-      #     echo "npmAuthToken: ${{ env.token }}" >> ~/.yarnrc.yml
+      - name: Add NPM token to .yarnrc.yml file
+        run: |
+          echo "npmAuthToken: ${{ env.token }}" >> ~/.yarnrc.yml
 
       - name: Synchronize Packages
         run: |
