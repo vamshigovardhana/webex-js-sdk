@@ -365,3 +365,179 @@ jobs:
           else
             git push origin ${{ steps.versionextractor.outputs.version }}
           fi
+
+  notify-webex-space:
+    name: Send Webex Space Notification
+    needs: [publish-tag, publish-documentation]
+    runs-on: ubuntu-latest
+    if: ${{ needs.publish-tag.outputs.proceed == 'true' }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Get Tag and Changelog Info
+        id: tag-info
+        run: |
+          VERSION="${{ needs.publish-tag.outputs.version }}"
+          DEPLOY_SHA="${{ needs.publish-tag.outputs.commit }}"
+
+          STABLE_VERSION=""
+          if [ -n "$VERSION" ]; then
+            STABLE_VERSION=$(echo "${VERSION#v}" | sed 's/-next\..*//' | sed 's/-[a-z]*\..*//')
+          fi
+
+          CHANGELOG_FILE=""
+          if [ -n "$STABLE_VERSION" ]; then
+            FILE_NAME="v${STABLE_VERSION//./_}"
+            CHANGELOG_FILE="/tmp/changelog_${FILE_NAME}.json"
+            git fetch origin documentation 2>/dev/null
+            if ! git show "origin/documentation:docs/changelog/logs/${FILE_NAME}.json" > "$CHANGELOG_FILE" 2>/dev/null; then
+              CHANGELOG_FILE=""
+            fi
+          fi
+
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "stable_version=${STABLE_VERSION}" >> $GITHUB_OUTPUT
+          echo "deploy_sha=${DEPLOY_SHA}" >> $GITHUB_OUTPUT
+          echo "changelog_file=${CHANGELOG_FILE}" >> $GITHUB_OUTPUT
+
+      - name: Get Packages and PR Info from Changelog
+        id: get-prs
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const deploySha = '${{ steps.tag-info.outputs.deploy_sha }}';
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            const emptyResult = (prNum, fetchSuccess) => {
+              core.setOutput('pr_number', prNum || '');
+              core.setOutput('package_versions', JSON.stringify({}));
+              core.setOutput('primary_package', '');
+              core.setOutput('fetch_success', String(fetchSuccess));
+            };
+
+            let prNumber = '';
+            if (deploySha) {
+              try {
+                const prs = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+                  owner, repo, commit_sha: deploySha
+                });
+                const mergedPR = prs.data.find(pr => pr.merged_at);
+                if (mergedPR) {
+                  prNumber = String(mergedPR.number);
+                }
+              } catch (error) {
+                console.log(`Failed to discover PR from commit: ${error.message}`);
+              }
+            }
+
+            if (!prNumber) {
+              emptyResult(null, true);
+              return;
+            }
+            console.log(`PR #${prNumber}, deploy SHA: ${deploySha}`);
+
+            const prShas = new Set();
+            if (deploySha) prShas.add(deploySha);
+            try {
+              const prCommits = await github.rest.pulls.listCommits({
+                owner, repo, pull_number: parseInt(prNumber), per_page: 100
+              });
+              for (const c of prCommits.data) {
+                prShas.add(c.sha);
+              }
+            } catch (error) {
+              console.log(`Failed to fetch PR commits: ${error.message}`);
+            }
+
+            const changelogFile = '${{ steps.tag-info.outputs.changelog_file }}';
+            if (!changelogFile) {
+              emptyResult(prNumber, false);
+              return;
+            }
+
+            let changelog = {};
+            try {
+              const fs = require('fs');
+              changelog = JSON.parse(fs.readFileSync(changelogFile, 'utf8'));
+            } catch (error) {
+              console.log(`Failed to read changelog: ${error.message}`);
+              emptyResult(prNumber, false);
+              return;
+            }
+
+            const packageVersions = {};
+            for (const [pkgName, versions] of Object.entries(changelog)) {
+              for (const [ver, data] of Object.entries(versions)) {
+                const commits = data.commits || {};
+                if (Object.keys(commits).some(sha => prShas.has(sha))) {
+                  packageVersions[pkgName] = ver;
+                  for (const [alongPkg, alongVer] of Object.entries(data.alongWith || {})) {
+                    if (!packageVersions[alongPkg]) {
+                      packageVersions[alongPkg] = alongVer;
+                    }
+                  }
+                  break;
+                }
+              }
+            }
+
+            const directlyChanged = Object.keys(packageVersions).filter(p => p !== 'webex' && p !== 'webex-node');
+            const primaryPackage = directlyChanged[0] || Object.keys(packageVersions)[0] || '';
+
+            core.setOutput('pr_number', prNumber);
+            core.setOutput('package_versions', JSON.stringify(packageVersions));
+            core.setOutput('primary_package', primaryPackage);
+            core.setOutput('fetch_success', 'true');
+
+      - name: Build Changelog URL
+        id: build-url
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const stableVersion = '${{ steps.tag-info.outputs.stable_version }}';
+            const prNumber = '${{ steps.get-prs.outputs.pr_number }}';
+            const packageVersionsRaw = '${{ steps.get-prs.outputs.package_versions }}';
+            const primaryPackage = '${{ steps.get-prs.outputs.primary_package }}';
+            const packageVersions = packageVersionsRaw ? JSON.parse(packageVersionsRaw) : {};
+
+            const changelogUrl = new URL('https://web-sdk.webex.com/changelog/');
+            if (stableVersion) {
+              changelogUrl.searchParams.set('stable_version', stableVersion);
+            }
+            const changelogPackage = packageVersions['webex'] ? 'webex' : primaryPackage;
+            if (changelogPackage && packageVersions[changelogPackage]) {
+              changelogUrl.searchParams.set('package', changelogPackage);
+              changelogUrl.searchParams.set('version', packageVersions[changelogPackage]);
+            } else if (prNumber) {
+              changelogUrl.searchParams.set('commitMessage', `#${prNumber}`);
+            }
+
+            core.setOutput('changelog_url', changelogUrl.toString());
+
+      - name: Post Webex Space Message
+        env:
+          WEBEX_BOT_TOKEN: ${{ secrets.WEBEX_BOT_TOKEN }}
+          WEBEX_ROOM_ID: ${{ secrets.WEBEX_ROOM_ID }}
+        run: |
+          VERSION="${{ steps.tag-info.outputs.version }}"
+          PR_NUMBER="${{ steps.get-prs.outputs.pr_number }}"
+          CHANGELOG_URL="${{ steps.build-url.outputs.changelog_url }}"
+
+          PR_LINK="https://github.com/${{ github.repository }}/pull/${PR_NUMBER}"
+
+          MESSAGE="**SDK Version:** ${VERSION}\n\n**PR:** ${PR_LINK}\n\n**Changelog:** ${CHANGELOG_URL}"
+
+          echo "📨 Sending message to Webex Space..."
+
+          curl -sSf \
+            -H "Authorization: Bearer ${WEBEX_BOT_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "{\"roomId\":\"${WEBEX_ROOM_ID}\",\"markdown\":\"${MESSAGE}\"}" \
+            https://webexapis.com/v1/messages > /dev/null
+
+          echo "✅ Message sent successfully!"
