@@ -1,0 +1,242 @@
+name: Deploy CD (TEST)
+run-name: ${{ github.actor }} is running Deploy CD (TEST)
+
+on:
+  push:
+    branches:
+      - bot-comment
+  workflow_dispatch:
+    inputs:
+      test_pr_number:
+        description: 'PR number to use for testing'
+        required: true
+      scenario:
+        description: 'Test scenario'
+        required: true
+        type: choice
+        default: 'all_packages'
+        options:
+          - all_packages
+          - sub_packages_only
+          - no_packages
+
+jobs:
+  publish-npm:
+    name: Publish - NPM (MOCK)
+    runs-on: ubuntu-latest
+
+    outputs:
+      package_versions: ${{ steps.increment.outputs.package_versions }}
+
+    steps:
+      - name: Mock Increment Package Versions
+        id: increment
+        run: |
+          if [ "${{ github.event.inputs.scenario }}" = "no_packages" ]; then
+            echo "package_versions=" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event.inputs.scenario }}" = "sub_packages_only" ]; then
+            echo "package_versions<<EOF" >> $GITHUB_OUTPUT
+            echo "__webex_release__: @webex/internal-plugin-device => 3.4.0-next.1" >> $GITHUB_OUTPUT
+            echo "__webex_release__: @webex/internal-plugin-metrics => 3.4.0-next.1" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          else
+            echo "package_versions<<EOF" >> $GITHUB_OUTPUT
+            echo "__webex_release__: webex => 3.4.0-next.1" >> $GITHUB_OUTPUT
+            echo "__webex_release__: @webex/calling => 3.4.0-next.1" >> $GITHUB_OUTPUT
+            echo "__webex_release__: @webex/internal-plugin-device => 3.4.0-next.1" >> $GITHUB_OUTPUT
+            echo "__webex_release__: @webex/internal-plugin-metrics => 3.4.0-next.1" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          fi
+
+  publish-tag:
+    name: Publish - Tags (MOCK)
+    runs-on: ubuntu-latest
+    needs: [publish-npm]
+
+    outputs:
+      message: ${{ steps.mock-tag.outputs.message }}
+      version: ${{ steps.mock-tag.outputs.version }}
+      commit: ${{ steps.mock-tag.outputs.commit }}
+      proceed: ${{ steps.mock-tag.outputs.proceed }}
+
+    steps:
+      - name: Mock Tag Outputs
+        id: mock-tag
+        run: |
+          echo "message=feat: test deploy notification" >> $GITHUB_OUTPUT
+          echo "version=v3.4.0-next.1" >> $GITHUB_OUTPUT
+          echo "commit=${{ github.sha }}" >> $GITHUB_OUTPUT
+          if [ "${{ github.event.inputs.scenario }}" = "no_packages" ]; then
+            echo "proceed=false" >> $GITHUB_OUTPUT
+          else
+            echo "proceed=true" >> $GITHUB_OUTPUT
+          fi
+
+  publish-documentation:
+    name: Publish - Documentation (MOCK)
+    needs: [publish-npm]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Mock Documentation Publish
+        run: echo "Documentation publish skipped (mock)"
+
+  comment-on-pr:
+    name: Comment on Released PRs
+    needs: [publish-npm, publish-tag]
+    runs-on: ubuntu-latest
+
+    outputs:
+      pr_number: ${{ steps.get-pr.outputs.pr_number }}
+      changelog_url: ${{ steps.post-comment.outputs.changelog_url }}
+
+    steps:
+      - name: Get PR Number
+        id: get-pr
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const testPrNumber = '${{ github.event.inputs.test_pr_number }}';
+            if (testPrNumber) {
+              core.setOutput('pr_number', testPrNumber);
+              return;
+            }
+
+            const deploySha = context.sha;
+            const owner = 'webex';
+            const repo = 'webex-js-sdk';
+
+            try {
+              const prs = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+                owner, repo, commit_sha: deploySha
+              });
+              const mergedPR = prs.data.find(pr => pr.merged_at);
+              if (mergedPR) {
+                core.setOutput('pr_number', String(mergedPR.number));
+                return;
+              }
+            } catch (error) {
+              console.log(`Failed to discover PR from commit: ${error.message}`);
+            }
+            core.setOutput('pr_number', '');
+
+      - name: Post Release Comment on PR
+        id: post-comment
+        if: steps.get-pr.outputs.pr_number != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = parseInt('${{ steps.get-pr.outputs.pr_number }}');
+
+            const raw = `${{ needs.publish-npm.outputs.package_versions }}`;
+            const packageVersions = {};
+            for (const line of raw.split('\n')) {
+              const match = line.match(/^__webex_release__:\s+(.+?)\s+=>\s+(.+)$/);
+              if (match) packageVersions[match[1].trim()] = match[2].trim();
+            }
+            const packageEntries = Object.entries(packageVersions);
+            const version = packageVersions['webex'] ? `v${packageVersions['webex']}` : '';
+
+            const owner = 'webex';
+            const repo = 'webex-js-sdk';
+            const repoUrl = `https://github.com/${owner}/${repo}`;
+            const hasPackages = packageEntries.length > 0;
+
+            let commentBody;
+
+            if (hasPackages) {
+              const primaryPackage = packageVersions['webex']
+                ? 'webex'
+                : packageEntries.filter(([p]) => p !== 'webex' && p !== 'webex-node').map(([p]) => p)[0] || packageEntries[0][0];
+              const primaryVersion = packageVersions[primaryPackage];
+              const stableVersion = primaryVersion.replace(/-next\..*/, '').replace(/-[a-z]*\..*/, '');
+
+              const changelogUrl = new URL('https://web-sdk.webex.com/changelog/');
+              if (stableVersion) {
+                changelogUrl.searchParams.set('stable_version', stableVersion);
+              }
+              changelogUrl.searchParams.set('package', primaryPackage);
+              changelogUrl.searchParams.set('version', primaryVersion);
+
+              core.setOutput('changelog_url', changelogUrl.toString());
+
+              const releaseLine = version
+                ? `| **Released in:** [\`${version}\`](${repoUrl}/releases/tag/${version}) |`
+                : '';
+
+              const rows = packageEntries
+                .sort(([a], [b]) => {
+                  if (a === 'webex') return -1;
+                  if (b === 'webex') return 1;
+                  if (a === primaryPackage) return -1;
+                  if (b === primaryPackage) return 1;
+                  return a.localeCompare(b);
+                })
+                .map(([pkg, ver]) => `| \`${pkg}\` | \`${ver}\` |`)
+                .join('\n');
+
+              const packagesTable = [
+                '',
+                '| Packages Updated | Version |',
+                '|---------|---------|',
+                rows,
+                ''
+              ].join('\n');
+
+              commentBody = [
+                '| :tada: Your changes are now available! |',
+                '|---|',
+                releaseLine,
+                `| :book: **[View full changelog →](${changelogUrl})** |`,
+                packagesTable,
+                'Thank you for your contribution!',
+                '',
+                `_:robot: This is an automated message. For questions, please refer to the [documentation](${repoUrl}#readme)._`
+              ].filter(Boolean).join('\n');
+            } else {
+              const fallbackUrl = new URL('https://web-sdk.webex.com/changelog/');
+              fallbackUrl.searchParams.set('commitMessage', `#${prNumber}`);
+              core.setOutput('changelog_url', fallbackUrl.toString());
+
+              commentBody = [
+                ':white_check_mark: **Your changes have been merged!**',
+                '',
+                'Thank you for your contribution!',
+                '',
+                `_:robot: This is an automated message. For questions, please refer to the [documentation](${repoUrl}#readme)._`
+              ].join('\n');
+            }
+
+            console.log('--- Comment Body (DRY RUN - not posting to PR) ---');
+            console.log(commentBody);
+            console.log('--- End Comment Body ---');
+
+  notify-webex-space:
+    name: Send Webex Space Notification
+    needs: [publish-tag, publish-documentation, comment-on-pr]
+    runs-on: ubuntu-latest
+    if: ${{ needs.publish-tag.outputs.proceed == 'true' }}
+
+    steps:
+      - name: Post Webex Space Message
+        env:
+          WEBEX_BOT_TOKEN: ${{ secrets.WEBEX_BOT_TOKEN }}
+          WEBEX_ROOM_ID: ${{ secrets.WEBEX_ROOM_ID }}
+        run: |
+          VERSION="${{ needs.publish-tag.outputs.version }}"
+          PR_NUMBER="${{ needs.comment-on-pr.outputs.pr_number }}"
+          CHANGELOG_URL="${{ needs.comment-on-pr.outputs.changelog_url }}"
+
+          PR_LINK="https://github.com/${{ github.repository }}/pull/${PR_NUMBER}"
+
+          MESSAGE="**SDK Version:** ${VERSION}\n\n**PR:** ${PR_LINK}\n\n**Changelog:** ${CHANGELOG_URL}"
+
+          echo "📨 Sending message to Webex Space..."
+
+          curl -sSf \
+            -H "Authorization: Bearer ${WEBEX_BOT_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "{\"roomId\":\"${WEBEX_ROOM_ID}\",\"markdown\":\"${MESSAGE}\"}" \
+            https://webexapis.com/v1/messages > /dev/null
+
+          echo "✅ Message sent successfully!"
