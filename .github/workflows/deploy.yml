@@ -387,6 +387,8 @@ jobs:
     outputs:
       pr_number: ${{ steps.get-pr.outputs.pr_number }}
       changelog_url: ${{ steps.post-comment.outputs.changelog_url }}
+      version: ${{ steps.post-comment.outputs.version }}
+      primary_version: ${{ steps.post-comment.outputs.primary_version }}
 
     steps:
       - name: Get PR Number
@@ -428,6 +430,7 @@ jobs:
             }
             const packageEntries = Object.entries(packageVersions);
             const version = packageVersions['webex'] ? `v${packageVersions['webex']}` : '';
+            core.setOutput('version', version);
 
             const owner = 'webex';
             const repo = 'webex-js-sdk';
@@ -441,6 +444,7 @@ jobs:
                 ? 'webex'
                 : packageEntries.filter(([p]) => p !== 'webex' && p !== 'webex-node').map(([p]) => p)[0] || packageEntries[0][0];
               const primaryVersion = packageVersions[primaryPackage];
+              core.setOutput('primary_version', `v${primaryVersion}`);
               const stableVersion = primaryVersion.replace(/-next\..*/, '').replace(/-[a-z]*\..*/, '');
 
               const changelogUrl = new URL('https://web-sdk.webex.com/changelog/');
@@ -540,7 +544,7 @@ jobs:
 
   notify-webex-space:
     name: Send Webex Space Notification
-    needs: [publish-tag, publish-documentation, comment-on-pr]
+    needs: [publish-tag, publish-npm, comment-on-pr]
     runs-on: ubuntu-latest
     if: ${{ needs.publish-tag.outputs.proceed == 'true' }}
 
@@ -550,13 +554,31 @@ jobs:
           WEBEX_BOT_TOKEN: ${{ secrets.WEBEX_BOT_TOKEN }}
           WEBEX_ROOM_ID: ${{ secrets.WEBEX_ROOM_ID }}
         run: |
-          VERSION="${{ needs.publish-tag.outputs.version }}"
+          VERSION="${{ needs.comment-on-pr.outputs.primary_version }}"
           PR_NUMBER="${{ needs.comment-on-pr.outputs.pr_number }}"
           CHANGELOG_URL="${{ needs.comment-on-pr.outputs.changelog_url }}"
 
-          PR_LINK="https://github.com/${{ github.repository }}/pull/${PR_NUMBER}"
+          if [ -n "${PR_NUMBER}" ]; then
+            PR_LINK="[#${PR_NUMBER}](https://github.com/${{ github.repository }}/pull/${PR_NUMBER})"
+          else
+            PR_LINK=""
+          fi
 
-          MESSAGE="**SDK Version:** ${VERSION}\n\n**PR:** ${PR_LINK}\n\n**Changelog:** ${CHANGELOG_URL}"
+          MESSAGE=""
+          if [ -n "${VERSION}" ]; then
+            MESSAGE="**SDK Version:** ${VERSION}"
+          fi
+          if [ -n "${PR_LINK}" ]; then
+            MESSAGE="${MESSAGE}\n\n**PR:** ${PR_LINK}"
+          fi
+          if [ -n "${CHANGELOG_URL}" ]; then
+            MESSAGE="${MESSAGE}\n\n**Changelog:** ${CHANGELOG_URL}"
+          fi
+
+          if [ -z "${MESSAGE}" ]; then
+            echo "No version or PR info available. Skipping notification."
+            exit 0
+          fi
 
           echo "📨 Sending message to Webex Space..."
 
