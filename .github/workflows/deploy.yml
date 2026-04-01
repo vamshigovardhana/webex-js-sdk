@@ -213,7 +213,7 @@ jobs:
         run: yarn run build:script
 
       - name: Deploy Packages
-        run: yarn workspaces foreach --from '${{ needs.generate-package-matrix.outputs.yarn-recursive }}' --verbose run deploy:npm --access public --tag ${GITHUB_REF##*/}
+        run: yarn workspaces foreach --from '${{ needs.generate-package-matrix.outputs.yarn-recursive }}' --verbose run deploy:npm --access public --tag ${GITHUB_REF##*/} --dry-run
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
