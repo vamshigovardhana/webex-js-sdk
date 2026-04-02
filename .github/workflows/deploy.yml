@@ -391,8 +391,8 @@ jobs:
         with:
           script: |
             const deploySha = context.sha;
-            const owner = 'webex';
-            const repo = 'webex-js-sdk';
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
 
             try {
               const prs = await github.rest.repos.listPullRequestsAssociatedWithCommit({
@@ -424,8 +424,8 @@ jobs:
             const packageEntries = Object.entries(packageVersions);
             const version = packageVersions['webex'] ? `v${packageVersions['webex']}` : '';
 
-            const owner = 'webex';
-            const repo = 'webex-js-sdk';
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
             const repoUrl = `https://github.com/${owner}/${repo}`;
             const hasPackages = packageEntries.length > 0;
 
