@@ -580,7 +580,7 @@ jobs:
             exit 0
           fi
 
-          echo "📨 Sending message to Webex Space..."
+          echo "Sending message to Webex Space..."
 
           curl -sSf \
             -H "Authorization: Bearer ${WEBEX_BOT_TOKEN}" \
@@ -588,4 +588,4 @@ jobs:
             -d "{\"roomId\":\"${WEBEX_ROOM_ID}\",\"markdown\":\"${MESSAGE}\"}" \
             https://webexapis.com/v1/messages > /dev/null
 
-          echo "✅ Message sent successfully!"
+          echo "Message sent successfully!"
