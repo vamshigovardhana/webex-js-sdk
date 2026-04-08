@@ -552,7 +552,7 @@ jobs:
           CHANGELOG_URL="${{ needs.comment-on-pr.outputs.changelog_url }}"
 
           if [ -n "${PR_NUMBER}" ]; then
-            PR_LINK="[#${PR_NUMBER}](https://github.com/${{ github.repository }}/pull/${PR_NUMBER})"
+            PR_LINK="https://github.com/${{ github.repository }}/pull/${PR_NUMBER}"
           else
             PR_LINK=""
           fi
