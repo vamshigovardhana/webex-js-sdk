@@ -209,7 +209,7 @@ jobs:
         run: yarn run build:script
 
       - name: Deploy Packages
-        run: echo "Dry-run - skipping actual publish for testing"
+        run: yarn workspaces foreach --from '${{ needs.generate-package-matrix.outputs.yarn-recursive }}' --verbose run deploy:npm --access public --tag ${GITHUB_REF##*/}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
