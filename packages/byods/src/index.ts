@@ -1,4 +1,3 @@
-// Copyright (c) 2015-2025 Cisco Systems, Inc. See LICENSE file.
 import BYODS from './byods';
 import TokenManager from './token-manager';
 import BaseClient from './base-client';
