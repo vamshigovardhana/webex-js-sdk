@@ -559,7 +559,7 @@ jobs:
 
           MESSAGE=""
           if [ -n "${VERSION}" ]; then
-            MESSAGE="**SDK Version:** ${VERSION}"
+            MESSAGE="**Version:** ${VERSION}"
           fi
           if [ -n "${PR_LINK}" ]; then
             MESSAGE="${MESSAGE}\n\n**PR:** ${PR_LINK}"
