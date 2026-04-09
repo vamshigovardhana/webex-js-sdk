@@ -209,7 +209,7 @@ jobs:
         run: yarn run build:script
 
       - name: Deploy Packages
-        run: yarn workspaces foreach --from '${{ needs.generate-package-matrix.outputs.yarn-recursive }}' --verbose run deploy:npm --access public --tag ${GITHUB_REF##*/}
+        run: echo "Dry-run - skipping actual publish for testing"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -539,7 +539,7 @@ jobs:
     name: Send Webex Space Notification
     needs: [publish-tag, publish-npm, comment-on-pr]
     runs-on: ubuntu-latest
-    if: ${{ needs.publish-tag.outputs.proceed == 'true' }}
+    if: always()
 
     steps:
       - name: Post Webex Space Message
