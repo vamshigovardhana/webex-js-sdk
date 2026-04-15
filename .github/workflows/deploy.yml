@@ -190,6 +190,19 @@ jobs:
           yarn
           yarn package-tools sync --tag ${GITHUB_REF##*/}
 
+      - name: Evaluate changed packages
+        id: pkg
+        env:
+          NODE_REC: ${{ needs.generate-package-matrix.outputs.node-recursive }}
+          YARN_REC: ${{ needs.generate-package-matrix.outputs.yarn-recursive }}
+        run: |
+          if [ -n "$NODE_REC" ] && [ -n "$YARN_REC" ]; then
+            echo "has=true" >> $GITHUB_OUTPUT
+          else
+            echo "has=false" >> $GITHUB_OUTPUT
+            echo "::notice title=Deploy CD::No workspace packages changed since the previous commit (workflow-only or docs-only push). Skipping increment, build, and npm deploy."
+          fi
+
       - name: Display Notice
         run: |
           echo "packages to increment: ${{ needs.generate-package-matrix.outputs.node-recursive }}"
@@ -197,20 +210,31 @@ jobs:
 
       - name: Increment Package Versions
         id: increment
+        env:
+          NODE_REC: ${{ needs.generate-package-matrix.outputs.node-recursive }}
         run: |
-          OUTPUT=$(yarn package-tools increment --packages ${{ needs.generate-package-matrix.outputs.node-recursive }} --tag ${GITHUB_REF##*/})
+          if [ "${{ steps.pkg.outputs.has }}" != "true" ]; then
+            echo "package_versions<<EOF" >> $GITHUB_OUTPUT
+            echo "" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          OUTPUT=$(yarn package-tools increment --packages "$NODE_REC" --tag ${GITHUB_REF##*/})
           echo "$OUTPUT"
           echo "package_versions<<EOF" >> $GITHUB_OUTPUT
           echo "$OUTPUT" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Build all packages for publish
+        if: steps.pkg.outputs.has == 'true'
         run: yarn run build:publish
 
       - name: Build a webex UMD
+        if: steps.pkg.outputs.has == 'true'
         run: yarn run build:script
 
       - name: Deploy Packages
+        if: steps.pkg.outputs.has == 'true'
         run: yarn workspaces foreach --from '${{ needs.generate-package-matrix.outputs.yarn-recursive }}' --verbose run deploy:npm --access public --tag ${GITHUB_REF##*/}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -219,7 +243,7 @@ jobs:
     name: Publish - Documentation
     needs: [publish-npm,generate-package-matrix]
     runs-on: ubuntu-latest
-    if: github.ref != 'refs/heads/wxcc'
+    if: github.ref != 'refs/heads/wxcc' && needs.generate-package-matrix.outputs.node-recursive != ''
 
     steps:
       - name: Documentation Deploy Steps
