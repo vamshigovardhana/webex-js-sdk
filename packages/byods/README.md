@@ -64,3 +64,5 @@ To consume the latest stable version of the BYoDS SDK, you can use NPM.
 ```javascript
   import BYoDS from '@webex/byods';
 ```
+
+Test marker: non-webex primary selection validation run.
