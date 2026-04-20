@@ -1,0 +1,65 @@
+{
+  "webex": {
+    "3.12.0-next.7": {
+      "published_date": 1775072617923,
+      "commits": {
+        "69c30cff3839a5f9665838e15e9d0773ed93be23": "test: trigger package change detection for workflow testing"
+      },
+      "alongWith": {}
+    },
+    "3.12.0-next.8": {
+      "published_date": 1775108825513,
+      "commits": {
+        "92d29f430507069ca4942c31457a09d7d0158179": "Merge pull request #23 from vamshigovardhana/test-comment-bot",
+        "17a0a4ff29b6722ddf56580530740c252d7fd6ae": "test: dummy change to test comment bot"
+      },
+      "alongWith": {}
+    },
+    "3.12.0-next.12": {
+      "published_date": 1775460965263,
+      "commits": {
+        "452e64d458082aad43984d4092058ae480b986b9": "Merge pull request #25 from vamshigovardhana/pr",
+        "aea480408570e7f818ecf53d0f5ef4f7ad7765a5": "test: verify comment bot and webex space notification",
+        "bc65363b632fd48569ae719a8446ba0ba5c81743": "feat(ci): add PR comment bot to deploy workflow"
+      },
+      "alongWith": {}
+    },
+    "3.12.0-next.18": {
+      "published_date": 1775735433936,
+      "commits": {
+        "c51ebf2703b276d29c7d03a318474058a009a76c": "Merge pull request #29 from vamshigovardhana/test-calling-notification",
+        "0d50cecf6b345d2b9573c3d145bccedbcd425457": "test: verify Webex notification with @webex/calling package"
+      },
+      "alongWith": {
+        "@webex/contact-center": "3.12.0-next.13",
+        "@webex/calling": "3.12.0-next.10"
+      }
+    }
+  },
+  "@webex/contact-center": {
+    "3.12.0-next.13": {
+      "published_date": 1775735433934,
+      "commits": {
+        "c51ebf2703b276d29c7d03a318474058a009a76c": "Merge pull request #29 from vamshigovardhana/test-calling-notification",
+        "0d50cecf6b345d2b9573c3d145bccedbcd425457": "test: verify Webex notification with @webex/calling package"
+      },
+      "alongWith": {
+        "@webex/calling": "3.12.0-next.10",
+        "webex": "3.12.0-next.18"
+      }
+    }
+  },
+  "@webex/calling": {
+    "3.12.0-next.10": {
+      "published_date": 1775735433935,
+      "commits": {
+        "c51ebf2703b276d29c7d03a318474058a009a76c": "Merge pull request #29 from vamshigovardhana/test-calling-notification",
+        "0d50cecf6b345d2b9573c3d145bccedbcd425457": "test: verify Webex notification with @webex/calling package"
+      },
+      "alongWith": {
+        "@webex/contact-center": "3.12.0-next.13",
+        "webex": "3.12.0-next.18"
+      }
+    }
+  }
+}
